@@ -1,7 +1,7 @@
 Import-Module Pode -MaximumVersion 2.99.99 -Force
 Import-Module ..\src\Pode.Web.psm1 -Force
 
-Import-Module ./misc/functions.psm1
+Import-Module ./misc/functions.psm1 -Force
 
 Start-PodeServer {
     # add a simple endpoint
@@ -10,10 +10,10 @@ Start-PodeServer {
 
 
     # set the use of templates, and set a login page
-    Use-PodeWebTemplates -Title 'Functions' -RootRedirect
+    Initialize-PodeWebTemplates -Title 'Functions' -RootRedirect
 
     Export-PodeModule -Name 'functions'
 
     # convert module to pages
-    ConvertTo-PodeWebPage -Commands 'Get-Noun'
+    ConvertTo-PodeWebPage -Commands 'Get-Noun', 'Get-CustomObject' -AsJson
 }

@@ -387,6 +387,7 @@ a.disabled {
     border-width: 2px;
     margin-top: -1px;
     border-radius: 5px;
+    z-index: 9999;
 }
 
 table .btn-icon-only {
@@ -448,20 +449,39 @@ span.pode-page-help {
     cursor: pointer;
 }
 
-li.nav-group-title {
-    border-top: 1px dashed #888;
-    padding-top: 1em;
-}
-
 li.nav-group-title span.badge {
     float: right;
     margin-right: 1em;
     padding: 5px;
 }
 
-ul#sidebar-list div.collapse,
-ul#sidebar-list div.collapsing {
+ul#sidebar-list li.nav-group-title a span.mdi {
+    border-style: solid;
+    border-color: var(--podeweb-secondary-text-color);
+    border-radius: 0.4em;
+    border-width: 0.1em;
+    padding-top: 0.24em;
+    padding-bottom: 0.24em;
+}
+
+ul#sidebar-list li.nav-group-title a:not(.collapsed) span.mdi {
+    background-color: var(--podeweb-secondary-border-color);
+    border-color: var(--podeweb-tertiary-text-color);
+    color: var(--podeweb-tertiary-text-color);
+}
+
+ul#sidebar-list li.nav-group-title a.collapsed span.mdi {
+    background-color: var(--podeweb-tertiary-border-color);
+}
+
+ul#sidebar-list hr {
+    border-color: var(--podeweb-primary-text-color);
+    margin-right: 1em;
     margin-left: 1em;
+}
+
+ul#sidebar-list li.nav-item {
+    margin-bottom: 0.3em;
 }
 
 div.pode-grid {
@@ -477,6 +497,7 @@ div.pode-grid {
 input[type="range"].pode-range-value {
     display: inline;
     width: 87% !important;
+    vertical-align: middle;
 }
 
 input[type="number"].pode-range-value {
@@ -484,20 +505,25 @@ input[type="number"].pode-range-value {
     width: 6% !important;
 }
 
-input[type=date]::-webkit-calendar-picker-indicator:hover,
-input[type=time]::-webkit-calendar-picker-indicator:hover,
-input[type=datetime-local]::-webkit-calendar-picker-indicator:hover,
-input[type=range]:hover,
-div.form-switch label.form-check-label:hover,
-div.form-check label.form-check-label:hover,
-select.form-select:hover,
-input[type=file]:hover {
+span.pode-range-max {
+    vertical-align: middle;
+}
+
+input[type=date]:not(:disabled)::-webkit-calendar-picker-indicator:hover,
+input[type=time]:not(:disabled)::-webkit-calendar-picker-indicator:hover,
+input[type=datetime-local]:not(:disabled)::-webkit-calendar-picker-indicator:hover,
+input[type=range]:not(:disabled):hover,
+.form-check-input:not(:disabled)~label.form-check-label:hover,
+select.form-select:not(:disabled):hover,
+input[type=file]:not(:disabled):hover,
+input[type=checkbox]:not(:disabled):hover,
+input[type=radio]:not(:disabled):hover {
     cursor: pointer;
 }
 
-input[type=date]:hover,
-input[type=time]:hover,
-input[type=datetime-local]:hover {
+input[type=date]:not(:disabled):hover,
+input[type=time]:not(:disabled):hover,
+input[type=datetime-local]:not(:disabled):hover {
     cursor: text;
 }
 
@@ -831,6 +857,34 @@ iframe {
     margin-left: 1em;
 }
 
+.mLeft2 {
+    margin-left: 2em;
+}
+
+.mLeft4 {
+    margin-left: 4em;
+}
+
+.mLeft6 {
+    margin-left: 6em;
+}
+
+.mLeft8 {
+    margin-left: 8em;
+}
+
+.mLeft10 {
+    margin-left: 10em;
+}
+
+.mLeft12 {
+    margin-left: 12em;
+}
+
+.mLeft14 {
+    margin-left: 14em;
+}
+
 .mRight05 {
     margin-right: 0.5em;
 }
@@ -985,7 +1039,7 @@ span.canvas-spinner {
 
 a.nav-link .mdi:before {
     position: relative;
-    top: 3px;
+    vertical-align: text-top;
 }
 
 #pode-page-title span.mdi.pode-page-title-icon:before {
@@ -1094,6 +1148,11 @@ a.nav-link .mdi:before {
 
 .breadcrumb a:hover span {
     text-decoration: underline;
+}
+
+.breadcrumb-item.active,
+.breadcrumb-item.active::before {
+    color: var(--podeweb-primary-text-color);
 }
 
 .alert .mdi::before {
@@ -1435,6 +1494,7 @@ div.form-floating>.form-control::placeholder {
     color: none !important;
 }
 
+.form-floating>label,
 .form-floating>.form-control:focus~label,
 .form-floating .form-control:focus~label::after,
 .form-floating>.form-control:not(:placeholder-shown)~label,
@@ -1486,6 +1546,7 @@ ul.dropdown-menu a.dropdown-item:active,
 ul.dropdown-menu a.dropdown-item:focus {
     background-color: var(--podeweb-primary-border-color);
     color: var(--podeweb-tertiary-text-color);
+    font-weight: bold;
 }
 
 pre code {
@@ -1532,10 +1593,6 @@ pre code {
     color: var(--podeweb-hover-primary-text-color) !important;
 }
 
-li.nav-group-title {
-    border-top-color: var(--podeweb-secondary-text-color);
-}
-
 .nav-item.nav-page-item a.nav-link.active {
     color: var(--podeweb-hover-primary-text-color) !important;
 }
@@ -1568,6 +1625,7 @@ nav .pagination .page-link:hover {
 
 hr {
     border-color: var(--podeweb-secondary-border-color);
+    border-width: medium;
 }
 
 .jumbotron {

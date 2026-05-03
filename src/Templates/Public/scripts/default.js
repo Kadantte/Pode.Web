@@ -16,6 +16,7 @@ var tooltips = function() {
 };
 tooltips();
 
+var FEATURES = {};
 var pageLoaded = false;
 var contentLoaded = false;
 
@@ -25,6 +26,9 @@ $(() => {
         return;
     }
     pageLoaded = true;
+
+    // load features from body attributes
+    loadFeatures();
 
     // check theme
     if (checkAutoTheme()) {
@@ -43,9 +47,15 @@ $(() => {
     // sessions
     setSessionTabId();
 
-    // setup sse connection
-    connectSse();
+    // setup client connection
+    setupClientConnection();
 });
+
+function loadFeatures() {
+    FEATURES = {
+        ParseDateTime: ($('body').attr('pode-parse-datetime') === 'True')
+    };
+}
 
 function loadContent() {
     if (contentLoaded) {
@@ -59,13 +69,28 @@ function loadContent() {
     });
 }
 
-function connectSse() {
-    // http responses?
-    if (!testConnectOverSse()) {
-        loadContent();
-        return;
-    }
+function setupClientConnection() {
+    var type = $('body').attr('pode-conn-type');
 
+    switch (type) {
+        case 'http':
+            setupHttpConnection();
+            break;
+
+        case 'sse':
+            setupSseConnection();
+            break;
+
+        default:
+            throw `Unknown response type '${type}'`;
+    }
+}
+
+function setupHttpConnection() {
+    loadContent();
+}
+
+function setupSseConnection() {
     // create sse connection
     const sse = new EventSource(getPageUrl('sse-open'));
 
@@ -77,28 +102,31 @@ function connectSse() {
 
     // wire up close event, to close sse connection
     sse.addEventListener('pode.close', (e) => {
+        sse.close();
         SSE_CLIENT_ID = null;
     });
 
     // wire up event for actions
     sse.addEventListener('pode.web.action', (e) => {
+        if (sse.readyState === EventSource.CLOSED) {
+            return;
+        }
+
         invokeActions(JSON.parse(e.data));
     });
 
     // error event
     sse.onerror = (e) => {
+        sse.close();
         console.log(e);
     };
 
     // wire up beforeunload, to close connection server side
     window.addEventListener("beforeunload", function(e) {
-        sendAjaxReq(getPageUrl('sse-close'), null, undefined, false);
+        sse.close();
+        SSE_CLIENT_ID = null;
         return null;
     });
-}
-
-function testConnectOverSse() {
-    return ($('body').attr('pode-resp-type') === 'sse');
 }
 
 function testCookie(name) {
@@ -761,12 +789,14 @@ function bindPageGroupCollapse() {
         var id = $(e.target).attr('id');
         var icon = $(`a[aria-controls="${id}"] span.mdi`);
         toggleIcon(icon, 'chevron-right', 'chevron-down');
+        e.stopPropagation();
     });
 
     $('ul#sidebar-list div.collapse').off('show.bs.collapse').on('show.bs.collapse', function(e) {
         var id = $(e.target).attr('id');
         var icon = $(`a[aria-controls="${id}"] span.mdi`);
         toggleIcon(icon, 'chevron-down', 'chevron-right');
+        e.stopPropagation();
     });
 }
 
@@ -1189,6 +1219,18 @@ function getTimeString() {
     return (new Date()).toLocaleTimeString().split(':').slice(0, 2).join(':');
 }
 
+function convertDateTimeString(value) {
+    if (!value || typeof value !== 'string') {
+        return value;
+    }
+
+    // find references to "/Date(...)/" and convert to datetime object
+    return value.replace(/\/Date\((\d+)\)\//g, function(match, timestamp) {
+        // return in YYYY-MM-DDTHH:mm:ss format - same as .NET's default JSON date format
+        return new Date(parseInt(timestamp)).toISOString().split('.')[0];
+    });
+}
+
 function actionHref(action) {
     if (!action) {
         return;
@@ -1364,15 +1406,12 @@ function getPageTitle() {
     return $('#pode-page-title h1').text().trim();
 }
 
-function invokeEvent(type, element) {
-    element = $(element);
+function invokePageEvent(eventType, target) {
+    sendAjaxReq(getPageUrl(`events/${eventType}`), null, null, true);
+}
 
-    if (getTagName(element) == null) {
-        sendAjaxReq(getPageUrl(`events/${type}`), null, null, true);
-    }
-    else {
-        PodeElementFactory.triggerObject(element.attr('pode-id'), type);
-    }
+function invokeServerEvent(evt, target, sender, eventType, opts) {
+    PodeElementFactory.triggerObject(target.attr('pode-id'), eventType, opts);
 }
 
 function generateUuid() {

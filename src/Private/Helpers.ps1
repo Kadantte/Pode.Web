@@ -161,8 +161,8 @@ function Test-PodeWebThemeInbuilt {
         $Name
     )
 
-    $inbuildThemes = Get-PodeWebInbuiltThemes
-    return ($Name -iin $inbuildThemes)
+    $inbuiltThemes = Get-PodeWebInbuiltThemes
+    return ($Name -iin $inbuiltThemes)
 }
 
 function Get-PodeWebCustomThemeRoutePath {
@@ -322,10 +322,11 @@ function Test-PodeWebColour {
 function Test-PodeWebArrayEmpty {
     param(
         [Parameter()]
+        [array]
         $Array
     )
 
-    return (($null -eq $Array) -or (@($Array).Length -eq 0))
+    return (($null -eq $Array) -or ($Array.Length -eq 0))
 }
 
 function Test-PodeWebPageAccess {
@@ -446,7 +447,7 @@ function Set-PodeWebState {
         $Value
     )
 
-    Set-PodeState -Name "pode.web.$($Name)" -Value $Value -Scope 'pode.web' | Out-Null
+    $null = Set-PodeState -Name "pode.web.$($Name)" -Value $Value -Scope 'pode.web'
 }
 
 function Get-PodeWebState {
@@ -957,7 +958,7 @@ function ConvertTo-PodeWebEvents {
     }
 
     foreach ($evt in $Events) {
-        $js_events += " on$($evt)=`"invokeEvent('$($evt)', this);`""
+        $js_events += " on$($evt)=`"invokePageEvent('$($evt)', this);`""
     }
 
     return $js_events
@@ -1094,7 +1095,8 @@ function Set-PodeWebSecurity {
                 -Default 'http', 'https' `
                 -Style 'http', 'https' `
                 -Scripts 'http', 'https' `
-                -Image 'http', 'https'
+                -Image 'http', 'https' `
+                -Font 'http', 'https', 'data'
         }
 
         'simple' {
@@ -1110,12 +1112,12 @@ function Set-PodeWebSecurity {
         -Style 'self', 'unsafe-inline' `
         -Scripts 'self', 'unsafe-inline', 'blob:' `
         -Image 'self', 'data'
-    #TODO: move "blob:" to -Worker in Pode v2.12.0
 }
 
 function Test-PodeWebParameter {
     param(
         [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.Dictionary[string, object]]
         $Parameters,
 
         [Parameter(Mandatory = $true)]
@@ -1226,7 +1228,7 @@ function Set-PodeWebMetadata {
     $WebEvent.Metadata.SenderId = Get-PodeHeader -Name 'X-PODE-WEB-SENDER-ID'
 }
 
-function Test-PodeWebResponseType {
+function Test-PodeWebConnectionType {
     param(
         [Parameter()]
         [ValidateSet('Http', 'Sse')]
@@ -1234,9 +1236,9 @@ function Test-PodeWebResponseType {
         $Type
     )
 
-    return ((Get-PodeWebState -Name 'resp-type') -ieq $Type)
+    return ((Get-PodeWebState -Name 'conn-type') -ieq $Type)
 }
 
-function Get-PodeWebResponseType {
-    return (Get-PodeWebState -Name 'resp-type')
+function Get-PodeWebConnectionType {
+    return (Get-PodeWebState -Name 'conn-type')
 }

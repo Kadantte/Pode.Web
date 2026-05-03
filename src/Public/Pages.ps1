@@ -152,7 +152,8 @@ function Set-PodeWebLoginPage {
         IsOAuth2        = $isOAuth2
         GrantType       = $grantType
         IsSystem        = $true
-        ResponseType    = (Get-PodeWebResponseType)
+        ConnectionType  = (Get-PodeWebConnectionType)
+        Features        = (Get-PodeWebState -Name 'features')
     }
 
     # set auth system urls
@@ -217,11 +218,11 @@ function Set-PodeWebLoginPage {
         $global:PageData = $null
     }
 
-    # add sse open route
-    if (Test-PodeWebResponseType -Type Sse) {
+    # add sse open/close routes
+    if (Test-PodeWebConnectionType -Type Sse) {
         Add-PodeRoute -Method Get -Path "/pode.web-dynamic/pages/$($pageMeta.ID)/sse-open" -ArgumentList @{ ID = $Id } -EndpointName $EndpointName -ScriptBlock {
             param($Data)
-            ConvertTo-PodeSseConnection -Name 'Pode.Web.Actions' -Group $Data.ID
+            ConvertTo-PodeSseConnection -Name 'Pode.Web.Actions' -Group $Data.ID -Scope Global
         }
 
         # add sse close route
@@ -379,6 +380,11 @@ function Add-PodeWebPage {
     $ScriptBlock, $mainUsingVars = Convert-PodeScopedVariables -ScriptBlock $ScriptBlock -PSSession $PSCmdlet.SessionState
     $HelpScriptBlock, $helpUsingVars = Convert-PodeScopedVariables -ScriptBlock $HelpScriptBlock -PSSession $PSCmdlet.SessionState
 
+    # for homepage, set index to MinValue if not explicitly set
+    if ($HomePage -and ($Index -eq [int]::MaxValue)) {
+        $Index = [int]::MinValue
+    }
+
     # setup page meta
     $pageMeta = @{
         Operation        = 'New'
@@ -399,10 +405,12 @@ function Add-PodeWebPage {
         Icon             = $Icon
         Path             = (Get-PodeWebPagePath -Name $Name -Group $Group -Path $Path -NoAppPath)
         Url              = (Get-PodeWebPagePath -Name $Name -Group $Group -Path $Path)
-        Hide             = $Hide.IsPresent
         NoSidebar        = $NoSidebar.IsPresent
         NoNavigation     = $NoNavigation.IsPresent
         Navigation       = $Navigation
+        Sidebar          = @{
+            Hide = $Hide.IsPresent
+        }
         Logic            = @{
             ScriptBlock    = $ScriptBlock
             UsingVariables = $mainUsingVars
@@ -419,7 +427,8 @@ function Add-PodeWebPage {
             Groups = @($AccessGroups)
             Users  = @($AccessUsers)
         }
-        ResponseType     = (Get-PodeWebResponseType)
+        ConnectionType   = (Get-PodeWebConnectionType)
+        Features         = (Get-PodeWebState -Name 'features')
     }
 
     # does the page need auth?
@@ -541,8 +550,8 @@ function Add-PodeWebPage {
         $global:PageData = $null
     }
 
-    # add sse open route
-    if (Test-PodeWebResponseType -Type Sse) {
+    # add sse open/close routes
+    if (Test-PodeWebConnectionType -Type Sse) {
         Add-PodeRoute -Method Get -Path "/pode.web-dynamic/pages/$($pageMeta.ID)/sse-open" -Authentication $pageMeta.Authentication -ArgumentList @{ Data = $ArgumentList; ID = $Id } -IfExists $IfExists -EndpointName $EndpointName -ScriptBlock {
             param($Data)
             $global:PageData = (Get-PodeWebState -Name 'pages')[$Data.ID]
@@ -567,7 +576,7 @@ function Add-PodeWebPage {
             }
             else {
                 # open new sse connection
-                ConvertTo-PodeSseConnection -Name 'Pode.Web.Actions' -Group $Data.ID
+                ConvertTo-PodeSseConnection -Name 'Pode.Web.Actions' -Group $Data.ID -Scope Global
             }
 
             $global:PageData = $null
@@ -812,7 +821,7 @@ function Add-PodeWebPageLink {
 }
 
 function ConvertTo-PodeWebPage {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'NoGroup')]
     param(
         [Parameter(ValueFromPipeline = $true)]
         [string[]]
@@ -822,13 +831,33 @@ function ConvertTo-PodeWebPage {
         [string]
         $Module,
 
+        [Parameter()]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]
+        $Depth = 1,
+
+        [Parameter(ParameterSetName = 'GroupByCustom')]
+        [string]
+        $Group,
+
+        [Parameter(ParameterSetName = 'GroupByVerbs')]
         [switch]
         $GroupVerbs,
+
+        [Parameter(ParameterSetName = 'GroupByModule')]
+        [switch]
+        $GroupModule,
 
         [Parameter()]
         [Alias('NoAuth')]
         [switch]
-        $NoAuthentication
+        $NoAuthentication,
+
+        [switch]
+        $ExcludeOptionalParameters,
+
+        [switch]
+        $AsJson
     )
 
     # if a module was supplied, import it - then validate the commands
@@ -859,7 +888,12 @@ function ConvertTo-PodeWebPage {
         throw 'No commands supplied to convert to Pages'
     }
 
+    # list of system parameters to ignore when building input controls
     $sysParams = [System.Management.Automation.PSCmdlet]::CommonParameters.GetEnumerator() | Foreach-Object { $_ }
+
+    if ($ExcludeOptionalParameters) {
+        $sysParams += [System.Management.Automation.PSCmdlet]::OptionalParameters.GetEnumerator() | Foreach-Object { $_ }
+    }
 
     # create the pages for each of the commands
     foreach ($cmd in $Commands) {
@@ -914,11 +948,15 @@ function ConvertTo-PodeWebPage {
 
                                     if ($param.Attributes.TypeId.Name -icontains 'ValidateSetAttribute') {
                                         $values = ($param.Attributes | Where-Object { $_.TypeId.Name -ieq 'ValidateSetAttribute' }).ValidValues
-                                        New-PodeWebSelect -Name "$($name)_$($param.Name)" -DisplayName $param.Name -Options $values -SelectedValue $default -Multiple:$multiple
+                                        New-PodeWebSelect -Name "$($name)_$($param.Name)" -DisplayName $param.Name -Multiple:$multiple -Options @(
+                                            $values | ConvertTo-PodeWebOption -SelectedValue $default
+                                        )
                                     }
                                     elseif ($param.ParameterType.BaseType.Name -ieq 'enum') {
                                         $values = [enum]::GetValues($param.ParameterType)
-                                        New-PodeWebSelect -Name "$($name)_$($param.Name)" -DisplayName $param.Name -Options $values -SelectedValue $default -Multiple:$multiple
+                                        New-PodeWebSelect -Name "$($name)_$($param.Name)" -DisplayName $param.Name -Multiple:$multiple -Options @(
+                                            $values | ConvertTo-PodeWebOption -SelectedValue $default
+                                        )
                                     }
                                     else {
                                         New-PodeWebTextbox -Name "$($name)_$($param.Name)" -DisplayName $param.Name -Value $default
@@ -933,7 +971,9 @@ function ConvertTo-PodeWebPage {
 
                 # build form
                 $formId = "form_param_$($cmd)_$($name)"
-                $form = New-PodeWebForm -Name "$($name)_Parameters_Form" -Id $formId -Content $elements -NoAuthentication:$NoAuthentication -ScriptBlock {
+                $form = New-PodeWebForm -Name "$($name)_Parameters_Form" -Id $formId -Content $elements -NoAuthentication:$NoAuthentication -ArgumentList $AsJson.IsPresent, $Depth -ScriptBlock {
+                    param($AsJson, $Depth)
+
                     $cmd = $WebEvent.Data['_Function_Name_']
                     $WebEvent.Data.Remove('_Function_Name_')
 
@@ -970,14 +1010,20 @@ function ConvertTo-PodeWebPage {
                     }
 
                     try {
-                    (. $cmd @_args) |
-                            New-PodeWebTextbox -Name 'Output_Result' -Multiline -Preformat |
-                            Out-PodeWebElement
+                        $result = (. $cmd @_args)
+                        if ($AsJson) {
+                            $result = $result | ConvertTo-Json -Depth $Depth
+                        }
+
+                        New-PodeWebTextbox -Name 'Output_Result' -Multiline -Preformat -Value $result | Out-PodeWebElement
                     }
                     catch {
-                        $_.Exception |
-                            New-PodeWebTextbox -Name 'Output_Error' -Multiline -Preformat |
-                            Out-PodeWebElement
+                        $result = $_.Exception
+                        if ($AsJson) {
+                            $result = $result | ConvertTo-Json -Depth $Depth
+                        }
+
+                        New-PodeWebTextbox -Name 'Output_Error' -Multiline -Preformat -Value $result | Out-PodeWebElement
                     }
                 }
 
@@ -985,14 +1031,28 @@ function ConvertTo-PodeWebPage {
                 New-PodeWebTab -Name $name -Content $card
             })
 
-        $group = [string]::Empty
-        if ($GroupVerbs) {
-            $group = $cmdInfo.Verb
-            if ([string]::IsNullOrWhiteSpace($group)) {
-                $group = '_'
+        # which group should the page belong to?
+        switch ($PSCmdlet.ParameterSetName) {
+            'NoGroup' {
+                $Group = [string]::Empty
+            }
+
+            'GroupByVerbs' {
+                $Group = $cmdInfo.Verb
+                if ([string]::IsNullOrWhiteSpace($Group)) {
+                    $Group = '_'
+                }
+            }
+
+            'GroupByModule' {
+                $Group = $cmdInfo.ModuleName
+                if ([string]::IsNullOrWhiteSpace($Group)) {
+                    $Group = '_'
+                }
             }
         }
 
+        # add the page
         Add-PodeWebPage `
             -Name $cmd `
             -Icon Settings `
@@ -1114,7 +1174,7 @@ function Test-PodeWebPage {
 
     # by ID
     if (![string]::IsNullOrWhiteSpace($Id)) {
-        return (Get-PodeWebState -Name 'pages').ContainsKey($Id)
+        return (Get-PodeWebState -Name 'pages').Contains($Id)
     }
 
     # by Name/Group
@@ -1144,10 +1204,22 @@ function New-PodeWebPageGroup {
 
         [Parameter()]
         [string]
+        $Parent,
+
+        [Parameter()]
+        [string]
         $Icon,
 
+        [Parameter()]
+        [ValidateSet('Creation', 'Ascending', 'Descending')]
+        [string]
+        $PageOrder = 'Ascending',
+
         [switch]
-        $NoCounter,
+        $PagesFirst,
+
+        [switch]
+        $ShowCounter,
 
         [switch]
         $Hide,
@@ -1159,6 +1231,11 @@ function New-PodeWebPageGroup {
     # test if page group exists
     if (Test-PodeWebPageGroup -Name $Name) {
         throw "Page Group already exists: $($Name)"
+    }
+
+    # if parent supplied, test it exists
+    if (![string]::IsNullOrEmpty($Parent) -and !(Test-PodeWebPageGroup -Name $Parent)) {
+        throw "Parent Page Group does not exist: $($Parent)"
     }
 
     # set display name
@@ -1174,9 +1251,15 @@ function New-PodeWebPageGroup {
         ID            = Get-PodeWebRandomName
         Name          = $Name
         DisplayName   = [System.Net.WebUtility]::HtmlEncode($DisplayName)
-        Icon          = $Icon
-        NoCounter     = $NoCounter.IsPresent
-        Hide          = $Hide.IsPresent
+        Parent        = $Parent
+        Children      = @()
+        Icon          = $Icon1
+        Sidebar       = @{
+            ShowCounter = $ShowCounter.IsPresent
+            Hide        = $Hide.IsPresent
+        }
+        PageOrder     = $PageOrder.ToLowerInvariant()
+        PagesFirst    = $PagesFirst.IsPresent
         Pages         = @{}
     }
 
@@ -1184,6 +1267,12 @@ function New-PodeWebPageGroup {
     $groups = Get-PodeWebState -Name 'groups'
     $groups[$Name] = $groupMeta
 
+    # update parent's children, if applicable
+    if (![string]::IsNullOrEmpty($Parent)) {
+        $groups[$Parent].Children += $Name
+    }
+
+    # return group meta if needed
     if ($PassThru) {
         return $groupMeta
     }
@@ -1216,7 +1305,7 @@ function Test-PodeWebPageGroup {
         $Name
     )
 
-    return (Get-PodeWebState -Name 'groups').ContainsKey($Name)
+    return (Get-PodeWebState -Name 'groups').Contains($Name)
 }
 
 function Remove-PodeWebPageGroup {
@@ -1228,4 +1317,33 @@ function Remove-PodeWebPageGroup {
     )
 
     $null = (Get-PodeWebState -Name 'groups').Remove($Name)
+}
+
+function Show-PodeWebSidebarSeparator {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [hashtable]
+        $InputObject,
+
+        [Parameter()]
+        [ValidateSet('Before', 'After')]
+        [string]
+        $Position = 'Before',
+
+        [switch]
+        $PassThru
+    )
+
+    if ($null -eq $InputObject.Sidebar) {
+        $InputObject.Sidebar = @{}
+    }
+
+    $InputObject.Sidebar.Separator = @{
+        ShowBefore = ($Position -ieq 'Before')
+    }
+
+    if ($PassThru) {
+        return $InputObject
+    }
 }
